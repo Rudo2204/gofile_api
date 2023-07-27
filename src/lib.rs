@@ -1,3 +1,5 @@
+mod payload;
+
 use std::{
     borrow::{
         Cow,
@@ -5,12 +7,6 @@ use std::{
     path::{
         Path,
         PathBuf,
-    },
-    collections::{
-        HashMap,
-    },
-    str::{
-        FromStr,
     },
 };
 
@@ -32,15 +28,12 @@ use reqwest::{
 use serde::{
     Serialize,
     Deserialize,
-    Deserializer,
     de::{
-        self,
         DeserializeOwned,
     },
 };
 
 use serde_json::{
-    json,
     Value,
 };
 
@@ -57,13 +50,20 @@ use uuid::{
 use chrono::{
     DateTime,
     Utc,
-    serde::{
-        ts_seconds,
-    },
 };
 
-use mime::{
-    Mime,
+pub use payload::{
+    CreateFolderApiPayload,
+    SetOptionApiPayload,
+    CopyContentApiPayload,
+    DeleteContentApiPayload,
+    ContentOpt,
+    Server,
+    ApiResult,
+    UploadedFile,
+    Content,
+    AccountDetails,
+    NoInfo,
 };
 
 #[derive(Debug)]
@@ -92,7 +92,8 @@ impl Api {
     }
 
     pub async fn get_server() -> Result<ServerApi, Error> {
-        Self::get("getServer").await
+        let Server { server } = Self::get("getServer").await?;
+        Ok(ServerApi { server })
     }
 
     fn code_from_content_url(url: &Url) -> Result<String, Error> {
@@ -134,32 +135,32 @@ impl Api {
         Self::parse_res(res).await
     }
 
-    async fn put_with_json<T, S>(path: impl AsRef<str>, data: S) -> Result<T, Error>
+    async fn put_with_payload<T, P>(path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
-            S: Serialize,
+            P: Serialize,
     {
-        Self::request_with_json(Method::PUT, path, data).await
+        Self::request_with_payload(Method::PUT, path, payload).await
     }
 
-    async fn delete_with_json<T, S>(path: impl AsRef<str>, data: S) -> Result<T, Error>
+    async fn delete_with_payload<T, P>(path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
-            S: Serialize,
+            P: Serialize,
     {
-        Self::request_with_json(Method::DELETE, path, data).await
+        Self::request_with_payload(Method::DELETE, path, payload).await
     }
 
-    async fn request_with_json<T, S>(method: Method, path: impl AsRef<str>, data: S) -> Result<T, Error>
+    async fn request_with_payload<T, P>(method: Method, path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
-            S: Serialize,
+            P: Serialize,
     {
         let url = Self::url(path);
         let client = reqwest::Client::new();
         let res = client
             .request(method, url)
-            .json(&data)
+            .json(&payload)
             .send()
             .await?;
         Self::parse_res(res).await
@@ -172,13 +173,13 @@ impl Api {
         let status = res.status();
         let url = res.url().clone();
         if status != StatusCode::OK {
-            return match res.json::<ApiResponse<Value>>().await {
+            return match res.json::<ApiResult<Value>>().await {
                 Ok(res_obj) => Err(Error::ApiStatusError(url, res_obj.status)),
                 Err(_) => Err(Error::HttpStatusCodeError(url, status)),
             };
         };
 
-        let res_obj = res.json::<ApiResponse<T>>().await?;
+        let res_obj = res.json::<ApiResult<T>>().await?;
         if res_obj.status != "ok" {
             return Err(Error::ApiStatusError(url, res_obj.status));
         };
@@ -220,35 +221,34 @@ impl AuthorizedApi {
     }
 
     pub async fn create_folder(&self, parent_folder_id: Uuid, folder_name: impl Into<String>) -> Result<Content, Error> {
-        Api::put_with_json("createFolder", json!({
-            "token": self.token.clone(),
-            "parentFolderId": parent_folder_id.to_string(),
-            "folderName": folder_name.into(),
-        })).await
+        Api::put_with_payload("createFolder", CreateFolderApiPayload {
+            token: self.token.clone(),
+            parent_folder_id,
+            folder_name: folder_name.into(),
+        }).await
     }
 
     pub async fn set_public_option(&self, content_id: Uuid, public: bool) -> Result<NoInfo, Error> {
-        self.set_option(content_id, "public", if public { "true" } else { "false" }).await
+        self.set_option(content_id, ContentOpt::Public(public)).await
     }
 
     pub async fn set_password_option(&self, content_id: Uuid, password: impl Into<String>) -> Result<NoInfo, Error> {
-        self.set_option(content_id, "password", password).await
+        self.set_option(content_id, ContentOpt::Password(password.into())).await
     }
 
     pub async fn set_description_option(&self, content_id: Uuid, description: impl Into<String>) -> Result<NoInfo, Error> {
-        self.set_option(content_id, "description", description).await
+        self.set_option(content_id, ContentOpt::Description(description.into())).await
     }
 
     pub async fn set_expire_option(&self, content_id: Uuid, expire: DateTime<Utc>) -> Result<NoInfo, Error> {
-        self.set_option(content_id, "expire", expire.timestamp().to_string()).await
+        self.set_option(content_id, ContentOpt::Expire(expire)).await
     }
 
     pub async fn set_tags_option<S>(&self, content_id: Uuid, tags: Vec<S>) -> Result<NoInfo, Error>
     where
         S: Into<String>,
     {
-        let tags = tags.into_iter().map(|t| t.into()).collect::<Vec<_>>().join(",");
-        self.set_option(content_id, "tags", tags).await
+        self.set_option(content_id, ContentOpt::Tags(tags.into_iter().map(|s| s.into()).collect())).await
     }
 
     pub async fn get_direct_link(&self, content_id: Uuid) -> Result<Url, Error> {
@@ -263,34 +263,33 @@ impl AuthorizedApi {
     where
         T: DeserializeOwned
     {
-        self.set_option(content_id, "directLink", if direct_link { "true" } else { "false" }).await
+        self.set_option(content_id, ContentOpt::DirectLink(direct_link)).await
     }
 
-    pub async fn set_option<T>(&self, content_id: Uuid, option: impl Into<String>, value: impl Into<String>) -> Result<T, Error>
+    pub async fn set_option<T>(&self, content_id: Uuid, opt: ContentOpt) -> Result<T, Error>
     where
         T: DeserializeOwned
     {
-        Api::put_with_json("setOption", json!({
-            "token": self.token.clone(),
-            "contentId": content_id.to_string(),
-            "option": option.into(),
-            "value": value.into(),
-        })).await
+        Api::put_with_payload("setOption", SetOptionApiPayload {
+            token: self.token.clone(),
+            content_id,
+            opt,
+        }).await
     }
 
     pub async fn copy_content(&self, content_ids: Vec<Uuid>, dest_folder_id: Uuid) -> Result<NoInfo, Error> {
-        Api::put_with_json("copyContent", json!({
-            "token": self.token.clone(),
-            "contentsId": content_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>().join(","),
-            "folderIdDest": dest_folder_id.to_string(),
-        })).await
+        Api::put_with_payload("copyContent", CopyContentApiPayload {
+            token: self.token.clone(),
+            contents_id: content_ids,
+            folder_id_dest: dest_folder_id,
+        }).await
     }
 
     pub async fn delete_content(&self, content_ids: Vec<Uuid>) -> Result<NoInfo, Error> {
-        Api::delete_with_json("deleteContent", json!({
-            "token": self.token.clone(),
-            "contentsId": content_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>().join(","),
-        })).await
+        Api::delete_with_payload("deleteContent", DeleteContentApiPayload {
+            token: self.token.clone(),
+            contents_id: content_ids,
+        }).await
     }
 }
 
@@ -393,111 +392,6 @@ impl AuthorizedServerApi {
 
     pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
         ServerApi::upload_file_impl(&self.server, filename, body, Some(folder_id), Some(self.token.clone())).await
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiResponse<T> {
-    status: String,
-    data: T,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UploadedFile {
-    pub guest_token: Option<String>,
-    pub download_page: Url,
-    pub code: String,
-    pub parent_folder: Uuid,
-    pub file_id: Uuid,
-    pub file_name: String,
-
-    #[serde(with = "hex::serde")]
-    pub md5: [u8; 16],
-}
-
-impl UploadedFile {
-    pub fn guest_api(&self) -> Option<AuthorizedApi> {
-        if let Some(token) = &self.guest_token {
-            Some(AuthorizedApi { token: token.clone() })
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Content {
-    pub id: Uuid,
-    pub name: String,
-    pub parent_folder: Uuid,
-
-    #[serde(with = "ts_seconds")]
-    pub create_time: DateTime<Utc>,
-
-    #[serde(flatten)]
-    pub kind: ContentKind,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag="type", rename_all = "camelCase")]
-pub enum ContentKind {
-    #[serde(rename_all = "camelCase")]
-    Folder {
-       code: String,
-
-       #[serde(default)]
-       public: bool,
-
-       childs: Vec<Uuid>,
-
-        // only top folder
-       total_download_count: Option<u32>,
-       total_size: Option<u64>,
-       contents: Option<HashMap<Uuid, Content>>,
-    },
-
-    #[serde(rename_all = "camelCase")]
-    File {
-       size: u64,
-       download_count: u32,
-
-        #[serde(with = "hex::serde")]
-       md5: [u8; 16],
-
-        #[serde(deserialize_with = "mime_from_str")]
-       mimetype: Mime,
-       server_choosen: String,
-       link: Url,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountDetails {
-    pub id: Uuid,
-    pub token: String,
-    pub email: String,
-    pub tier: String,
-    pub root_folder: Uuid,
-    pub files_count: u32,
-    pub total_size: u64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NoInfo {
-}
-
-fn mime_from_str<'de, D>(d: D) -> Result<Mime, D::Error>
-where
-    D: Deserializer<'de>
-{
-    let mime_str = String::deserialize(d)?;
-    match Mime::from_str(&mime_str) {
-        Err(err) => Err(de::Error::custom(format!("{}", err))),
-        Ok(mime) => Ok(mime),
     }
 }
 
