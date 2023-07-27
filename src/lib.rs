@@ -84,16 +84,21 @@ impl From<reqwest::Error> for Error {
 
 #[derive(Debug)]
 pub struct Api {
+    pub base_url: String,
 }
 
 impl Api {
-    pub fn authorize(token: impl Into<String>) -> AuthorizedApi {
-        AuthorizedApi { token: token.into() }
+    pub fn new() -> Self {
+        Api { base_url: "https://api.gofile.io/".into() }
     }
 
-    pub async fn get_server() -> Result<ServerApi, Error> {
-        let Server { server } = Self::get("getServer").await?;
-        Ok(ServerApi { server })
+    pub fn authorize(&self, token: impl Into<String>) -> AuthorizedApi {
+        AuthorizedApi { base_url: self.base_url.clone(), token: token.into() }
+    }
+
+    pub async fn get_server(&self) -> Result<ServerApi, Error> {
+        let Server { server } = Api::get(&self.base_url, "getServer").await?;
+        Ok(ServerApi { base_url: format!("https://{}.gofile.io/", server) })
     }
 
     fn code_from_content_url(url: &Url) -> Result<String, Error> {
@@ -110,23 +115,23 @@ impl Api {
         Ok(code.into())
     }
 
-    fn url(path: impl AsRef<str>) -> Url {
+    fn url(base_url: impl AsRef<str>, path: impl AsRef<str>) -> Url {
         let path = path.as_ref();
-        Url::parse(&(format!("https://api.gofile.io/{}", path))).unwrap()
+        Url::parse(&(format!("{}{}", base_url.as_ref(), path))).unwrap()
     }
 
-    async fn get<T>(path: impl AsRef<str>) -> Result<T, Error>
+    async fn get<T>(base_url: impl AsRef<str>, path: impl AsRef<str>) -> Result<T, Error>
         where
             T: DeserializeOwned,
     {
-        Self::get_with_params(path, vec![]).await
+        Self::get_with_params(base_url, path, vec![]).await
     }
 
-    async fn get_with_params<T>(path: impl AsRef<str>, params: Vec<(&'static str, String)>) -> Result<T, Error>
+    async fn get_with_params<T>(base_url: impl AsRef<str>, path: impl AsRef<str>, params: Vec<(&'static str, String)>) -> Result<T, Error>
         where
             T: DeserializeOwned,
     {
-        let mut url = Self::url(path);
+        let mut url = Self::url(base_url, path);
         for (key, value) in params {
             url.query_pairs_mut().append_pair(key, &value);
         };
@@ -135,28 +140,28 @@ impl Api {
         Self::parse_res(res).await
     }
 
-    async fn put_with_payload<T, P>(path: impl AsRef<str>, payload: P) -> Result<T, Error>
+    async fn put_with_payload<T, P>(base_url: impl AsRef<str>, path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
             P: Serialize,
     {
-        Self::request_with_payload(Method::PUT, path, payload).await
+        Self::request_with_payload(Method::PUT, base_url, path, payload).await
     }
 
-    async fn delete_with_payload<T, P>(path: impl AsRef<str>, payload: P) -> Result<T, Error>
+    async fn delete_with_payload<T, P>(base_url: impl AsRef<str>, path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
             P: Serialize,
     {
-        Self::request_with_payload(Method::DELETE, path, payload).await
+        Self::request_with_payload(Method::DELETE, base_url, path, payload).await
     }
 
-    async fn request_with_payload<T, P>(method: Method, path: impl AsRef<str>, payload: P) -> Result<T, Error>
+    async fn request_with_payload<T, P>(method: Method, base_url: impl AsRef<str>, path: impl AsRef<str>, payload: P) -> Result<T, Error>
         where
             T: DeserializeOwned,
             P: Serialize,
     {
-        let url = Self::url(path);
+        let url = Self::url(base_url, path);
         let client = reqwest::Client::new();
         let res = client
             .request(method, url)
@@ -190,13 +195,14 @@ impl Api {
 
 #[derive(Clone, Debug)]
 pub struct AuthorizedApi {
+    pub base_url: String,
     pub token: String,
 }
 
 impl AuthorizedApi {
     pub async fn get_server(&self) -> Result<AuthorizedServerApi, Error> {
-        let ServerApi { server } = Api::get_server().await?;
-        Ok(AuthorizedServerApi { server, token: self.token.clone() })
+        let ServerApi { base_url } = Api::new().get_server().await?;
+        Ok(AuthorizedServerApi { base_url, token: self.token.clone() })
     }
 
     pub async fn get_content(&self, url: &Url) -> Result<Content, Error> {
@@ -213,15 +219,15 @@ impl AuthorizedApi {
     }
 
     async fn get_content_impl(&self, id_or_code: impl Into<String>) -> Result<Content, Error> {
-        Api::get_with_params("getContent", vec![("contentId", id_or_code.into()), ("token", self.token.clone())]).await
+        Api::get_with_params(&self.base_url, "getContent", vec![("contentId", id_or_code.into()), ("token", self.token.clone())]).await
     }
 
     pub async fn get_account_details(&self) -> Result<AccountDetails, Error> {
-        Api::get_with_params("getAccountDetails", vec![("token", self.token.clone())]).await
+        Api::get_with_params(&self.base_url, "getAccountDetails", vec![("token", self.token.clone())]).await
     }
 
     pub async fn create_folder(&self, parent_folder_id: Uuid, folder_name: impl Into<String>) -> Result<Content, Error> {
-        Api::put_with_payload("createFolder", CreateFolderApiPayload {
+        Api::put_with_payload(&self.base_url, "createFolder", CreateFolderApiPayload {
             token: self.token.clone(),
             parent_folder_id,
             folder_name: folder_name.into(),
@@ -270,7 +276,7 @@ impl AuthorizedApi {
     where
         T: DeserializeOwned
     {
-        Api::put_with_payload("setOption", SetOptionApiPayload {
+        Api::put_with_payload(&self.base_url, "setOption", SetOptionApiPayload {
             token: self.token.clone(),
             content_id,
             opt,
@@ -278,7 +284,7 @@ impl AuthorizedApi {
     }
 
     pub async fn copy_content(&self, content_ids: Vec<Uuid>, dest_folder_id: Uuid) -> Result<NoInfo, Error> {
-        Api::put_with_payload("copyContent", CopyContentApiPayload {
+        Api::put_with_payload(&self.base_url, "copyContent", CopyContentApiPayload {
             token: self.token.clone(),
             contents_id: content_ids,
             folder_id_dest: dest_folder_id,
@@ -286,7 +292,7 @@ impl AuthorizedApi {
     }
 
     pub async fn delete_content(&self, content_ids: Vec<Uuid>) -> Result<NoInfo, Error> {
-        Api::delete_with_payload("deleteContent", DeleteContentApiPayload {
+        Api::delete_with_payload(&self.base_url, "deleteContent", DeleteContentApiPayload {
             token: self.token.clone(),
             contents_id: content_ids,
         }).await
@@ -295,7 +301,7 @@ impl AuthorizedApi {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct ServerApi {
-    pub server: String,
+    pub base_url: String,
 }
 
 impl ServerApi {
@@ -310,11 +316,11 @@ impl ServerApi {
     }
 
     pub async fn upload_file_with_filename(&self, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
-        Self::upload_file_impl(&self.server, filename, body, None, None).await
+        Self::upload_file_impl(&self.base_url, filename, body, None, None).await
     }
 
     pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
-        Self::upload_file_impl(&self.server, filename, body, Some(folder_id), None).await
+        Self::upload_file_impl(&self.base_url, filename, body, Some(folder_id), None).await
     }
 
     pub async fn open_file(path: impl AsRef<Path>) -> Result<(String, File), Error> {
@@ -334,7 +340,7 @@ impl ServerApi {
         Ok((filename.into(), file))
     }
 
-    async fn upload_file_impl(server: &str, filename: Cow<'static, str>, body: impl Into<Body>, folder_id: Option<Uuid>, token: Option<String>) -> Result<UploadedFile, Error> {
+    async fn upload_file_impl(base_url: &str, filename: Cow<'static, str>, body: impl Into<Body>, folder_id: Option<Uuid>, token: Option<String>) -> Result<UploadedFile, Error> {
         let client = reqwest::Client::new();
 
         let part = Part::stream(body)
@@ -354,7 +360,7 @@ impl ServerApi {
             form
         };
 
-        let url = Url::parse(&(format!("https://{}.gofile.io/uploadFile", server))).unwrap();
+        let url = Url::parse(&(format!("{}uploadFile", base_url))).unwrap();
 
         let res = client.post(url)
             .multipart(form)
@@ -367,13 +373,13 @@ impl ServerApi {
 
 #[derive(Clone, Debug)]
 pub struct AuthorizedServerApi {
-    pub server: String,
+    pub base_url: String,
     pub token: String,
 }
 
 impl AuthorizedServerApi {
     pub fn authorize(self, token: impl Into<String>) -> AuthorizedServerApi {
-        AuthorizedServerApi { server: self.server, token: token.into() }
+        AuthorizedServerApi { base_url: self.base_url, token: token.into() }
     }
 
     pub async fn upload_file(&self, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
@@ -387,11 +393,11 @@ impl AuthorizedServerApi {
     }
 
     pub async fn upload_file_with_filename(&self, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
-        ServerApi::upload_file_impl(&self.server, filename, body, None, Some(self.token.clone())).await
+        ServerApi::upload_file_impl(&self.base_url, filename, body, None, Some(self.token.clone())).await
     }
 
     pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
-        ServerApi::upload_file_impl(&self.server, filename, body, Some(folder_id), Some(self.token.clone())).await
+        ServerApi::upload_file_impl(&self.base_url, filename, body, Some(folder_id), Some(self.token.clone())).await
     }
 }
 

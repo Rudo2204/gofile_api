@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let token = var("GOFILE_TOKEN").unwrap();
-    let api = Api::authorize(token);
+    let api = Api::new().authorize(token);
     let account_details = api.get_account_details().await?;
 
     let src_dir = api.create_folder(account_details.root_folder, "src").await?;
