@@ -1,5 +1,5 @@
 [package]
-name = "gofile"
+name = "gofile_api"
 version = "0.1.0"
 edition = "2021"
 
