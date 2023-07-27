@@ -32,6 +32,6 @@ async fn main() -> Result<(), Error> {
 
 async fn upload(api: AuthorizedApi, folder_id: Uuid, filename: &'static str, content: &'static str) -> Result<UploadedFile, Error> {
     let server = api.get_server().await?;
-    server.upload_file_with_filename_to_folder(folder_id, filename.into(), content).await
+    server.upload_file_with_filename_to_folder(folder_id, filename, content).await
 }
 

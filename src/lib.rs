@@ -1,9 +1,6 @@
 mod payload;
 
 use std::{
-    borrow::{
-        Cow,
-    },
     path::{
         Path,
         PathBuf,
@@ -89,7 +86,7 @@ pub struct Api {
 
 impl Api {
     pub fn new() -> Self {
-        Api { base_url: "https://api.gofile.io/".into() }
+        Api { base_url: "https://api.gofile.io".into() }
     }
 
     pub fn authorize(&self, token: impl Into<String>) -> AuthorizedApi {
@@ -98,7 +95,7 @@ impl Api {
 
     pub async fn get_server(&self) -> Result<ServerApi, Error> {
         let Server { server } = Api::get(&self.base_url, "getServer").await?;
-        Ok(ServerApi { base_url: format!("https://{}.gofile.io/", server) })
+        Ok(ServerApi { base_url: format!("https://{}.gofile.io", server) })
     }
 
     fn code_from_content_url(url: &Url) -> Result<String, Error> {
@@ -117,7 +114,7 @@ impl Api {
 
     fn url(base_url: impl AsRef<str>, path: impl AsRef<str>) -> Url {
         let path = path.as_ref();
-        Url::parse(&(format!("{}{}", base_url.as_ref(), path))).unwrap()
+        Url::parse(&(format!("{}/{}", base_url.as_ref(), path))).unwrap()
     }
 
     async fn get<T>(base_url: impl AsRef<str>, path: impl AsRef<str>) -> Result<T, Error>
@@ -307,19 +304,19 @@ pub struct ServerApi {
 impl ServerApi {
     pub async fn upload_file(&self, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
         let (filename, file) = Self::open_file(path).await?;
-        self.upload_file_with_filename(filename.into(), file).await
+        self.upload_file_with_filename(filename, file).await
     }
 
     pub async fn upload_file_to_folder(&self, folder_id: Uuid, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
         let (filename, file) = Self::open_file(path).await?;
-        self.upload_file_with_filename_to_folder(folder_id, filename.into(), file).await
+        self.upload_file_with_filename_to_folder(folder_id, filename, file).await
     }
 
-    pub async fn upload_file_with_filename(&self, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
+    pub async fn upload_file_with_filename(&self, filename: impl Into<String>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
         Self::upload_file_impl(&self.base_url, filename, body, None, None).await
     }
 
-    pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
+    pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: impl Into<String>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
         Self::upload_file_impl(&self.base_url, filename, body, Some(folder_id), None).await
     }
 
@@ -340,11 +337,11 @@ impl ServerApi {
         Ok((filename.into(), file))
     }
 
-    async fn upload_file_impl(base_url: &str, filename: Cow<'static, str>, body: impl Into<Body>, folder_id: Option<Uuid>, token: Option<String>) -> Result<UploadedFile, Error> {
+    async fn upload_file_impl(base_url: &str, filename: impl Into<String>, body: impl Into<Body>, folder_id: Option<Uuid>, token: Option<String>) -> Result<UploadedFile, Error> {
         let client = reqwest::Client::new();
 
         let part = Part::stream(body)
-            .file_name(filename);
+            .file_name(filename.into());
         let form = Form::new()
             .part("file", part);
 
@@ -360,7 +357,7 @@ impl ServerApi {
             form
         };
 
-        let url = Url::parse(&(format!("{}uploadFile", base_url))).unwrap();
+        let url = Url::parse(&(format!("{}/uploadFile", base_url))).unwrap();
 
         let res = client.post(url)
             .multipart(form)
@@ -384,20 +381,124 @@ impl AuthorizedServerApi {
 
     pub async fn upload_file(&self, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
         let (filename, file) = ServerApi::open_file(path).await?;
-        self.upload_file_with_filename(filename.into(), file).await
+        self.upload_file_with_filename(filename, file).await
     }
 
     pub async fn upload_file_to_folder(&self, folder_id: Uuid, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
         let (filename, file) = ServerApi::open_file(path).await?;
-        self.upload_file_with_filename_to_folder(folder_id, filename.into(), file).await
+        self.upload_file_with_filename_to_folder(folder_id, filename, file).await
     }
 
-    pub async fn upload_file_with_filename(&self, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
+    pub async fn upload_file_with_filename(&self, filename: impl Into<String>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
         ServerApi::upload_file_impl(&self.base_url, filename, body, None, Some(self.token.clone())).await
     }
 
-    pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: Cow<'static, str>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
+    pub async fn upload_file_with_filename_to_folder(&self, folder_id: Uuid, filename: impl Into<String>, body: impl Into<Body>) -> Result<UploadedFile, Error> {
         ServerApi::upload_file_impl(&self.base_url, filename, body, Some(folder_id), Some(self.token.clone())).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::uuid;
+    use mockito::{
+        Matcher,
+        Server,
+    };
+
+    #[tokio::test]
+    async fn it_works() -> Result<(), Error> {
+        let mut server = Server::new();
+        let base_url = server.url();
+
+        assert_eq!(Api::new().base_url, "https://api.gofile.io");
+
+        let api = Api { base_url: base_url.clone() };
+        let authorized_api = api.authorize("gofile_token");
+
+        let mock = server.mock("GET", "/getServer")
+            .with_status(200)
+            .with_body(r#"{ "status": "ok", "data": { "server": "foo" } }"#)
+            .expect(1)
+            .create();
+        let server_api = api.get_server().await?;
+        assert_eq!(server_api.base_url, "https://foo.gofile.io");
+        mock.assert();
+
+        let mock = server.mock("POST", "/uploadFile")
+            .match_body(Matcher::Regex(String::from(r#"file content"#)))
+            .with_status(200)
+            .with_body(r#"{
+                "status": "ok",
+                "data": {
+                    "guestToken": "foo",
+                    "downloadPage": "http://example.com/path/file.txt",
+                    "code": "bar",
+                    "parentFolder": "00000000-0000-0000-0000-000000000001",
+                    "fileId": "00000000-0000-0000-0000-000000000002",
+                    "fileName": "baz",
+                    "md5": "000000000000000000000000000001ff"
+                }
+            }"#)
+            .expect(1)
+            .create();
+        let server_api = ServerApi { base_url: base_url.clone() };
+        let uploaded_file = server_api.upload_file_with_filename("test.txt", "file content").await?;
+        assert_eq!(uploaded_file.file_id, uuid!("00000000-0000-0000-0000-000000000002"));
+        mock.assert();
+
+        let mock = server.mock("GET", "/getContent?contentId=foo&token=gofile_token")
+            .with_status(200)
+            .with_body(r#"{
+                "status": "ok",
+                "data": {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "name": "foo",
+                    "parentFolder": "00000000-0000-0000-0000-000000000002",
+                    "createTime": 1000000001,
+                    "type": "folder",
+                    "code": "bar",
+                    "childs": [
+                        "00000000-0000-0000-0000-000000000003",
+                        "00000000-0000-0000-0000-000000000004"
+                    ],
+                    "totalDownloadCount": 10,
+                    "totalSize": 20,
+                    "contents": {
+                        "00000000-0000-0000-0000-000000000003": {
+                            "id": "00000000-0000-0000-0000-000000000003",
+                            "name": "baz",
+                            "parentFolder": "00000000-0000-0000-0000-000000000001",
+                            "createTime": 1000000002,
+                            "type": "folder",
+                            "code": "fiz",
+                            "public": true,
+                            "childs": []
+                        },
+                        "00000000-0000-0000-0000-000000000004": {
+                            "id": "00000000-0000-0000-0000-000000000004",
+                            "name": "foz",
+                            "parentFolder": "00000000-0000-0000-0000-000000000001",
+                            "createTime": 1000000003,
+                            "type": "file",
+                            "size": 20,
+                            "downloadCount": 10,
+                            "md5": "000000000000000000000000000001ff",
+                            "mimetype": "text/plain",
+                            "serverChoosen": "fez",
+                            "link": "http://example.com/path/file.txt"
+                        }
+                    }
+                }
+            }"#)
+            .expect(1)
+            .create();
+        let content = authorized_api.get_content(&Url::parse("https://gofile.io/d/foo").unwrap()).await?;
+        assert_eq!(content.id, uuid!("00000000-0000-0000-0000-000000000001"));
+        mock.assert();
+
+        Ok(())
     }
 }
 

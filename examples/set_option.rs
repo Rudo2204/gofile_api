@@ -19,7 +19,7 @@ async fn main() -> Result<(), Error> {
     api.set_tags_option(content_id, vec!["tag1", "tag2"]).await?;
 
     let server = api.get_server().await?;
-    let upload_result = server.upload_file_with_filename_to_folder(dir.id, "test.txt".into(), "file content").await?;
+    let upload_result = server.upload_file_with_filename_to_folder(dir.id, "test.txt", "file content").await?;
     let content_id = upload_result.file_id;
     let link_url = api.get_direct_link(content_id).await?;
 
