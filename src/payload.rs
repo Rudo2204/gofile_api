@@ -56,7 +56,9 @@ pub struct SetOptionApiPayload {
 #[derive(Debug, Serialize)]
 #[serde(tag = "option", content = "value", rename_all = "camelCase")]
 pub enum ContentOpt {
+    #[serde(serialize_with = "to_string")]
     Public(bool),
+
     Password(String),
     Description(String),
 
@@ -66,6 +68,7 @@ pub enum ContentOpt {
     #[serde(serialize_with = "comma_separated_string_from_vec")]
     Tags(Vec<String>),
 
+    #[serde(serialize_with = "to_string")]
     DirectLink(bool),
 }
 
@@ -199,6 +202,14 @@ where
     s.serialize_str(&comma_separated_str)
 }
 
+fn to_string<T, S>(v: T, s: S) -> Result<S::Ok, S::Error>
+where
+    T: ToString,
+    S: Serializer
+{
+    s.serialize_str(&v.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,8 +234,12 @@ mod tests {
             },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "public", "value": true }),
+            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "public", "value": "true" }),
             SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Public(true) },
+        );
+        assert_serialize(
+            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "public", "value": "false" }),
+            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Public(false) },
         );
         assert_serialize(
             json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "password", "value": "bar" }),
@@ -243,7 +258,7 @@ mod tests {
             SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Tags(vec![String::from("bar"), String::from("baz")]) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "directLink", "value": false }),
+            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "directLink", "value": "false" }),
             SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::DirectLink(false) },
         );
         assert_serialize(
