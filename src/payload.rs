@@ -129,7 +129,7 @@ pub struct UploadedFile {
 pub struct Content {
     pub id: Uuid,
     pub name: String,
-    pub parent_folder: Uuid,
+    pub parent_folder: Option<Uuid>,
 
     #[serde(with = "ts_seconds")]
     pub create_time: DateTime<Utc>,
@@ -153,7 +153,7 @@ pub enum ContentKind {
         // only top folder
        total_download_count: Option<u32>,
        total_size: Option<u64>,
-       contents: Option<HashMap<Uuid, Content>>,
+       children: Option<HashMap<Uuid, Content>>,
     },
 
     #[serde(rename_all = "camelCase")]
@@ -166,7 +166,7 @@ pub enum ContentKind {
 
         #[serde(deserialize_with = "mime_from_str")]
        mimetype: Mime,
-       server_choosen: String,
+       server_selected: String,
        link: Url,
     },
 }
@@ -385,7 +385,7 @@ mod tests {
                 ],
                 "totalDownloadCount": 10,
                 "totalSize": 20,
-                "contents": {
+                "children": {
                     "00000000-0000-0000-0000-000000000003": {
                         "id": "00000000-0000-0000-0000-000000000003",
                         "name": "baz",
@@ -406,7 +406,7 @@ mod tests {
                         "downloadCount": 10,
                         "md5": "000000000000000000000000000001ff",
                         "mimetype": "text/plain",
-                        "serverChoosen": "fez",
+                        "serverSelected": "fez",
                         "link": "http://example.com/path/file.txt",
                     },
                 },
@@ -414,7 +414,7 @@ mod tests {
             Content {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: String::from("foo"),
-                parent_folder: uuid!("00000000-0000-0000-0000-000000000002"),
+                parent_folder: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 create_time: Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 41).unwrap(),
                 kind: ContentKind::Folder {
                     code: String::from("bar"),
@@ -425,13 +425,13 @@ mod tests {
                     ],
                     total_download_count: Some(10),
                     total_size: Some(20),
-                    contents: Some(HashMap::from_iter([
+                    children: Some(HashMap::from_iter([
                         (
                             uuid!("00000000-0000-0000-0000-000000000003"),
                             Content {
                                 id: uuid!("00000000-0000-0000-0000-000000000003"),
                                 name: String::from("baz"),
-                                parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
+                                parent_folder: Some(uuid!("00000000-0000-0000-0000-000000000001")),
                                 create_time: Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 42).unwrap(),
                                 kind: ContentKind::Folder {
                                     code: String::from("fiz"),
@@ -440,7 +440,7 @@ mod tests {
                                     ],
                                     total_download_count: None,
                                     total_size: None,
-                                    contents: None,
+                                    children: None,
                                 },
                             },
                         ),
@@ -449,7 +449,7 @@ mod tests {
                             Content {
                                 id: uuid!("00000000-0000-0000-0000-000000000004"),
                                 name: String::from("foz"),
-                                parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
+                                parent_folder: Some(uuid!("00000000-0000-0000-0000-000000000001")),
                                 create_time: Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 43).unwrap(),
                                 kind: ContentKind::File {
                                     size: 20,
@@ -459,7 +459,7 @@ mod tests {
                                         0, 0, 0, 0, 0, 0, 0x1, 0xff,
                                     ],
                                     mimetype: Mime::from_str("text/plain").unwrap(),
-                                    server_choosen: String::from("fez"),
+                                    server_selected: String::from("fez"),
                                     link: Url::parse("http://example.com/path/file.txt").unwrap(),
                                 },
                             },
@@ -479,7 +479,7 @@ mod tests {
             "downloadCount": 10,
             "md5": "000000000000000000000000000001ff",
             "mimetype": "error-mime-type",
-            "serverChoosen": "fez",
+            "serverSelected": "fez",
             "link": "http://example.com/path/file.txt",
         })).is_err());
 
