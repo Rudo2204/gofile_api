@@ -45,9 +45,8 @@ pub struct CreateFolderApiPayload {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SetOptionApiPayload {
+pub struct UpdateContentApiPayload {
     pub token: String,
-    pub content_id: Uuid,
 
     #[serde(flatten)]
     pub opt: ContentOpt,
@@ -100,8 +99,15 @@ pub struct ApiResult<T> {
 
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Servers {
+    pub servers: Vec<Server>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Server {
-    pub server: String,
+    pub name: String,
+    pub zone: String,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -234,32 +240,32 @@ mod tests {
             },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "public", "value": "true" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Public(true) },
+            json!({ "token": "foo", "option": "public", "value": "true" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Public(true) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "public", "value": "false" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Public(false) },
+            json!({ "token": "foo", "option": "public", "value": "false" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Public(false) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "password", "value": "bar" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Password(String::from("bar")) },
+            json!({ "token": "foo", "option": "password", "value": "bar" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Password(String::from("bar")) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "description", "value": "bar" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Description(String::from("bar")) },
+            json!({ "token": "foo", "option": "description", "value": "bar" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Description(String::from("bar")) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "expire", "value": 1000000000 }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Expire(Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 40).unwrap()) },
+            json!({ "token": "foo", "option": "expire", "value": 1000000000 }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Expire(Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 40).unwrap()) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "tags", "value": "bar,baz" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::Tags(vec![String::from("bar"), String::from("baz")]) },
+            json!({ "token": "foo", "option": "tags", "value": "bar,baz" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Tags(vec![String::from("bar"), String::from("baz")]) },
         );
         assert_serialize(
-            json!({ "token": "foo", "contentId": "00000000-0000-0000-0000-000000000001", "option": "directLink", "value": "false" }),
-            SetOptionApiPayload { token: String::from("foo"), content_id: uuid!("00000000-0000-0000-0000-000000000001"), opt: ContentOpt::DirectLink(false) },
+            json!({ "token": "foo", "option": "directLink", "value": "false" }),
+            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::DirectLink(false) },
         );
         assert_serialize(
             json!({
@@ -297,8 +303,8 @@ mod tests {
     fn deserialize() {
         assert_deserialize(json!({ "status": "ok", "data": {} }), ApiResult { status: String::from("ok"), data: NoInfo { } });
         assert_deserialize(
-            json!({ "status": "ok", "data": { "server": "foo" } }),
-            ApiResult { status: String::from("ok"), data: Server { server: String::from("foo") } },
+            json!({ "status": "ok", "data": { "servers": [{ "name": "foo", "zone": "ja" }] } }),
+            ApiResult { status: String::from("ok"), data: Servers { servers: vec![Server { name: String::from("foo"), zone: String::from("ja") }] } },
         );
         assert_deserialize(
             json!({

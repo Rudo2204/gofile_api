@@ -56,6 +56,7 @@ pub enum Error {
     HttpRequestError(Option<Url>, String),
     HttpStatusCodeError(Url, StatusCode),
     ApiStatusError(Url, String),
+    EmptyServerList,
     InvalidFilePath(PathBuf, String),
     CouldntOpenFile(PathBuf, String),
     InvalidContentUrl(Url, String),
@@ -82,7 +83,8 @@ impl Api {
     }
 
     pub async fn get_server(&self) -> Result<ServerApi, Error> {
-        let Server { server } = Api::get(&self.base_url, "getServer").await?;
+        let Servers { servers } = Api::get(&self.base_url, "servers").await?;
+        let server = servers.into_iter().next().ok_or(Error::EmptyServerList)?.name;
         Ok(ServerApi { base_url: format!("https://{}.gofile.io", server) })
     }
 
@@ -199,20 +201,24 @@ impl AuthorizedApi {
         self.get_content_impl(content_id.to_string()).await
     }
 
-    pub async fn get_content_by_code(&self, code: impl Into<String>) -> Result<Content, Error> {
+    pub async fn get_content_by_code(&self, code: impl AsRef<str>) -> Result<Content, Error> {
         self.get_content_impl(code).await
     }
 
-    async fn get_content_impl(&self, id_or_code: impl Into<String>) -> Result<Content, Error> {
-        Api::get_with_params(&self.base_url, "getContent", vec![("contentId", id_or_code.into()), ("token", self.token.clone())]).await
+    async fn get_content_impl(&self, id_or_code: impl AsRef<str>) -> Result<Content, Error> {
+        Api::get_with_params(&self.base_url, format!("contents/{}", id_or_code.as_ref()), vec![("token", self.token.clone())]).await
     }
 
-    pub async fn get_account_details(&self) -> Result<AccountDetails, Error> {
-        Api::get_with_params(&self.base_url, "getAccountDetails", vec![("token", self.token.clone())]).await
+    pub async fn get_account_id(&self) -> Result<Uuid, Error> {
+        Api::get_with_params(&self.base_url, "accounts/getid", vec![("token", self.token.clone())]).await
+    }
+
+    pub async fn get_account_details(&self, account_id: Uuid) -> Result<AccountDetails, Error> {
+        Api::get_with_params(&self.base_url, format!("accounts/{}", account_id), vec![("token", self.token.clone())]).await
     }
 
     pub async fn create_folder(&self, parent_folder_id: Uuid, folder_name: impl Into<String>) -> Result<Content, Error> {
-        Api::put_with_payload(&self.base_url, "createFolder", CreateFolderApiPayload {
+        Api::put_with_payload(&self.base_url, "contents/createFolder", CreateFolderApiPayload {
             token: self.token.clone(),
             parent_folder_id,
             folder_name: folder_name.into(),
@@ -261,15 +267,14 @@ impl AuthorizedApi {
     where
         T: DeserializeOwned
     {
-        Api::put_with_payload(&self.base_url, "setOption", SetOptionApiPayload {
+        Api::put_with_payload(&self.base_url, format!("contents/{}/update", content_id), UpdateContentApiPayload {
             token: self.token.clone(),
-            content_id,
             opt,
         }).await
     }
 
     pub async fn copy_content(&self, content_ids: Vec<Uuid>, dest_folder_id: Uuid) -> Result<NoInfo, Error> {
-        Api::put_with_payload(&self.base_url, "copyContent", CopyContentApiPayload {
+        Api::put_with_payload(&self.base_url, "contents/copy", CopyContentApiPayload {
             token: self.token.clone(),
             contents_id: content_ids,
             folder_id_dest: dest_folder_id,
@@ -277,7 +282,7 @@ impl AuthorizedApi {
     }
 
     pub async fn delete_content(&self, content_ids: Vec<Uuid>) -> Result<NoInfo, Error> {
-        Api::delete_with_payload(&self.base_url, "deleteContent", DeleteContentApiPayload {
+        Api::delete_with_payload(&self.base_url, "contents", DeleteContentApiPayload {
             token: self.token.clone(),
             contents_id: content_ids,
         }).await
@@ -345,7 +350,7 @@ impl ServerApi {
             form
         };
 
-        let url = Url::parse(&(format!("{}/uploadFile", base_url))).unwrap();
+        let url = Url::parse(&(format!("{}/contents/uploadfile", base_url))).unwrap();
 
         let res = client.post(url)
             .multipart(form)
@@ -405,16 +410,16 @@ mod tests {
         let api = Api { base_url: base_url.clone() };
         let authorized_api = api.authorize("gofile_token");
 
-        let mock = server.mock("GET", "/getServer")
+        let mock = server.mock("GET", "/servers")
             .with_status(200)
-            .with_body(r#"{ "status": "ok", "data": { "server": "foo" } }"#)
+            .with_body(r#"{ "status": "ok", "data": { "servers": [ {"name":"store1","zone":"eu"}, {"name":"store3","zone":"na"} ] } }"#)
             .expect(1)
             .create();
         let server_api = api.get_server().await?;
-        assert_eq!(server_api.base_url, "https://foo.gofile.io");
+        assert_eq!(server_api.base_url, "https://store1.gofile.io");
         mock.assert();
 
-        let mock = server.mock("POST", "/uploadFile")
+        let mock = server.mock("POST", "/contents/uploadfile")
             .match_body(Matcher::Regex(String::from(r#"file content"#)))
             .with_status(200)
             .with_body(r#"{
@@ -436,7 +441,7 @@ mod tests {
         assert_eq!(uploaded_file.file_id, uuid!("00000000-0000-0000-0000-000000000002"));
         mock.assert();
 
-        let mock = server.mock("GET", "/getContent?contentId=foo&token=gofile_token")
+        let mock = server.mock("GET", "/contents/foo?token=gofile_token")
             .with_status(200)
             .with_body(r#"{
                 "status": "ok",
