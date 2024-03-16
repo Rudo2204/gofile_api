@@ -444,51 +444,66 @@ mod tests {
         let mock = server.mock("GET", "/contents/foo?token=gofile_token")
             .with_status(200)
             .with_body(r#"{
-                "status": "ok",
-                "data": {
-                    "id": "00000000-0000-0000-0000-000000000001",
-                    "name": "foo",
-                    "parentFolder": "00000000-0000-0000-0000-000000000002",
-                    "createTime": 1000000001,
+              "status": "ok",
+              "data": {
+                "id": "5e042945-0e5c-4c1d-9293-4574d376e496",
+                "type": "folder",
+                "name": "test3",
+                "parentFolder": "9e67ed91-a838-48f6-a96f-f2dd13de3e31",
+                "code": "JoKslp",
+                "createTime": 1709956384,
+                "public": true,
+                "totalDownloadCount": 1,
+                "totalSize": 120041,
+                "childrenIds": [
+                  "caf9aa4f-09fc-4e73-adb7-174a9c681674",
+                  "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37",
+                  "191c0a18-e4b2-494b-92dc-cff7e7fc6471"
+                ],
+                "children": {
+                  "191c0a18-e4b2-494b-92dc-cff7e7fc6471": {
+                    "id": "191c0a18-e4b2-494b-92dc-cff7e7fc6471",
                     "type": "folder",
-                    "code": "bar",
-                    "childs": [
-                        "00000000-0000-0000-0000-000000000003",
-                        "00000000-0000-0000-0000-000000000004"
-                    ],
-                    "totalDownloadCount": 10,
-                    "totalSize": 20,
-                    "contents": {
-                        "00000000-0000-0000-0000-000000000003": {
-                            "id": "00000000-0000-0000-0000-000000000003",
-                            "name": "baz",
-                            "parentFolder": "00000000-0000-0000-0000-000000000001",
-                            "createTime": 1000000002,
-                            "type": "folder",
-                            "code": "fiz",
-                            "public": true,
-                            "childs": []
-                        },
-                        "00000000-0000-0000-0000-000000000004": {
-                            "id": "00000000-0000-0000-0000-000000000004",
-                            "name": "foz",
-                            "parentFolder": "00000000-0000-0000-0000-000000000001",
-                            "createTime": 1000000003,
-                            "type": "file",
-                            "size": 20,
-                            "downloadCount": 10,
-                            "md5": "000000000000000000000000000001ff",
-                            "mimetype": "text/plain",
-                            "serverChoosen": "fez",
-                            "link": "http://example.com/path/file.txt"
-                        }
-                    }
+                    "name": "folder",
+                    "code": "p8NOPG",
+                    "createTime": 1710264457,
+                    "public": true,
+                    "childrenIds": [
+                      "f8b5c54d-75b3-4593-beed-52c1379bf2ab"
+                    ]
+                  },
+                  "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37": {
+                    "id": "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37",
+                    "type": "file",
+                    "name": "public.zip",
+                    "createTime": 1710264451,
+                    "size": 26178,
+                    "downloadCount": 0,
+                    "md5": "c7dfde837b22280147a8cc2d9cb4d8a4",
+                    "mimetype": "application/zip",
+                    "serverSelected": "store2",
+                    "link": "https://store2.gofile.io/download/web/cb35b4aa-274d-4d0f-9e81-97a58dd7fb37/public.zip"
+                  },
+                  "caf9aa4f-09fc-4e73-adb7-174a9c681674": {
+                    "id": "caf9aa4f-09fc-4e73-adb7-174a9c681674",
+                    "type": "file",
+                    "name": "Capture.JPG",
+                    "createTime": 1710264443,
+                    "size": 93863,
+                    "downloadCount": 1,
+                    "md5": "b32e8427d3c8b25253a7559170b281d2",
+                    "mimetype": "image/jpeg",
+                    "serverSelected": "store5",
+                    "link": "https://store5.gofile.io/download/web/caf9aa4f-09fc-4e73-adb7-174a9c681674/Capture.JPG",
+                    "thumbnail": "https://store5.gofile.io/download/web/caf9aa4f-09fc-4e73-adb7-174a9c681674/thumb_Capture.JPG"
+                  }
                 }
+              }
             }"#)
             .expect(1)
             .create();
         let content = authorized_api.get_content(&Url::parse("https://gofile.io/d/foo").unwrap()).await?;
-        assert_eq!(content.id, uuid!("00000000-0000-0000-0000-000000000001"));
+        assert_eq!(content.id, uuid!("5e042945-0e5c-4c1d-9293-4574d376e496"));
         mock.assert();
 
         Ok(())

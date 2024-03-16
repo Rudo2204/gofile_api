@@ -148,7 +148,7 @@ pub enum ContentKind {
        #[serde(default)]
        public: bool,
 
-       childs: Vec<Uuid>,
+       children_ids: Vec<Uuid>,
 
         // only top folder
        total_download_count: Option<u32>,
@@ -379,7 +379,7 @@ mod tests {
                 "createTime": 1000000001,
                 "type": "folder",
                 "code": "bar",
-                "childs": [
+                "childrenIds": [
                     "00000000-0000-0000-0000-000000000003",
                     "00000000-0000-0000-0000-000000000004",
                 ],
@@ -394,7 +394,7 @@ mod tests {
                         "type": "folder",
                         "code": "fiz",
                         "public": true,
-                        "childs": [],
+                        "childrenIds": [],
                     },
                     "00000000-0000-0000-0000-000000000004": {
                         "id": "00000000-0000-0000-0000-000000000004",
@@ -419,7 +419,7 @@ mod tests {
                 kind: ContentKind::Folder {
                     code: String::from("bar"),
                     public: false,
-                    childs: vec![
+                    children_ids: vec![
                         uuid!("00000000-0000-0000-0000-000000000003"),
                         uuid!("00000000-0000-0000-0000-000000000004"),
                     ],
@@ -436,7 +436,7 @@ mod tests {
                                 kind: ContentKind::Folder {
                                     code: String::from("fiz"),
                                     public: true,
-                                    childs: vec![
+                                    children_ids: vec![
                                     ],
                                     total_download_count: None,
                                     total_size: None,
