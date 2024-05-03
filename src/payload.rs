@@ -1,39 +1,9 @@
-use std::{
-    collections::{
-        HashMap,
-    },
-    str::{
-        FromStr,
-    },
-};
-
-use url::{
-    Url,
-};
-
-use uuid::{
-    Uuid,
-};
-
-use chrono::{
-    DateTime,
-    Utc,
-    serde::{
-        ts_seconds,
-    },
-};
-
-use mime::{
-    Mime,
-};
-
-use serde::{
-    Serialize,
-    Serializer,
-    Deserialize,
-    Deserializer,
-    de,
-};
+use chrono::{serde::ts_seconds, DateTime, Utc};
+use mime::Mime;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::HashMap, str::FromStr};
+use url::Url;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,35 +109,35 @@ pub struct Content {
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
-#[serde(tag="type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentKind {
     #[serde(rename_all = "camelCase")]
     Folder {
-       code: String,
+        code: String,
 
-       #[serde(default)]
-       public: bool,
+        #[serde(default)]
+        public: bool,
 
-       children_ids: Vec<Uuid>,
+        children_ids: Vec<Uuid>,
 
         // only top folder
-       total_download_count: Option<u32>,
-       total_size: Option<u64>,
-       children: Option<HashMap<Uuid, Content>>,
+        total_download_count: Option<u32>,
+        total_size: Option<u64>,
+        children: Option<HashMap<Uuid, Content>>,
     },
 
     #[serde(rename_all = "camelCase")]
     File {
-       size: u64,
-       download_count: u32,
+        size: u64,
+        download_count: u32,
 
         #[serde(with = "hex::serde")]
-       md5: [u8; 16],
+        md5: [u8; 16],
 
         #[serde(deserialize_with = "mime_from_str")]
-       mimetype: Mime,
-       server_selected: String,
-       link: Url,
+        mimetype: Mime,
+        server_selected: String,
+        link: Url,
     },
 }
 
@@ -185,12 +155,11 @@ pub struct AccountDetails {
 
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NoInfo {
-}
+pub struct NoInfo {}
 
 fn mime_from_str<'de, D>(d: D) -> Result<Mime, D::Error>
 where
-    D: Deserializer<'de>
+    D: Deserializer<'de>,
 {
     let mime_str = String::deserialize(d)?;
     match Mime::from_str(&mime_str) {
@@ -202,16 +171,20 @@ where
 fn comma_separated_string_from_vec<T, S>(vec: &Vec<T>, s: S) -> Result<S::Ok, S::Error>
 where
     T: ToString,
-    S: Serializer
+    S: Serializer,
 {
-    let comma_separated_str = vec.iter().map(|s| s.to_string()).collect::<Vec<String>>().join(",");
+    let comma_separated_str = vec
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>()
+        .join(",");
     s.serialize_str(&comma_separated_str)
 }
 
 fn to_string<T, S>(v: T, s: S) -> Result<S::Ok, S::Error>
 where
     T: ToString,
-    S: Serializer
+    S: Serializer,
 {
     s.serialize_str(&v.to_string())
 }
@@ -219,11 +192,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::uuid;
+    use chrono::prelude::*;
     use serde::de::DeserializeOwned;
     use serde_json::*;
-    use chrono::prelude::*;
     use std::fmt::Debug;
+    use uuid::uuid;
 
     #[test]
     fn serialize() {
@@ -241,31 +214,52 @@ mod tests {
         );
         assert_serialize(
             json!({ "token": "foo", "option": "public", "value": "true" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Public(true) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Public(true),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "public", "value": "false" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Public(false) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Public(false),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "password", "value": "bar" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Password(String::from("bar")) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Password(String::from("bar")),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "description", "value": "bar" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Description(String::from("bar")) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Description(String::from("bar")),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "expire", "value": 1000000000 }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Expire(Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 40).unwrap()) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Expire(Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 40).unwrap()),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "tags", "value": "bar,baz" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::Tags(vec![String::from("bar"), String::from("baz")]) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::Tags(vec![String::from("bar"), String::from("baz")]),
+            },
         );
         assert_serialize(
             json!({ "token": "foo", "option": "directLink", "value": "false" }),
-            UpdateContentApiPayload { token: String::from("foo"), opt: ContentOpt::DirectLink(false) },
+            UpdateContentApiPayload {
+                token: String::from("foo"),
+                opt: ContentOpt::DirectLink(false),
+            },
         );
         assert_serialize(
             json!({
@@ -275,7 +269,10 @@ mod tests {
             }),
             CopyContentApiPayload {
                 token: String::from("foo"),
-                contents_id: vec![uuid!("00000000-0000-0000-0000-000000000001"), uuid!("00000000-0000-0000-0000-000000000002")],
+                contents_id: vec![
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000002"),
+                ],
                 folder_id_dest: uuid!("00000000-0000-0000-0000-000000000003"),
             },
         );
@@ -286,14 +283,17 @@ mod tests {
             }),
             DeleteContentApiPayload {
                 token: String::from("foo"),
-                contents_id: vec![uuid!("00000000-0000-0000-0000-000000000001"), uuid!("00000000-0000-0000-0000-000000000002")],
+                contents_id: vec![
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000002"),
+                ],
             },
         );
     }
 
     fn assert_serialize<T>(expected_value: Value, payload: T)
-        where
-            T: Serialize + Debug,
+    where
+        T: Serialize + Debug,
     {
         assert!(0 < format!("{:?}", payload).len());
         assert_eq!(expected_value, to_value(&payload).unwrap());
@@ -301,10 +301,24 @@ mod tests {
 
     #[test]
     fn deserialize() {
-        assert_deserialize(json!({ "status": "ok", "data": {} }), ApiResult { status: String::from("ok"), data: NoInfo { } });
+        assert_deserialize(
+            json!({ "status": "ok", "data": {} }),
+            ApiResult {
+                status: String::from("ok"),
+                data: NoInfo {},
+            },
+        );
         assert_deserialize(
             json!({ "status": "ok", "data": { "servers": [{ "name": "foo", "zone": "ja" }] } }),
-            ApiResult { status: String::from("ok"), data: Servers { servers: vec![Server { name: String::from("foo"), zone: String::from("ja") }] } },
+            ApiResult {
+                status: String::from("ok"),
+                data: Servers {
+                    servers: vec![Server {
+                        name: String::from("foo"),
+                        zone: String::from("ja"),
+                    }],
+                },
+            },
         );
         assert_deserialize(
             json!({
@@ -322,10 +336,7 @@ mod tests {
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
                 file_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 file_name: String::from("baz"),
-                md5: [
-                    0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0x1, 0xff,
-                ],
+                md5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1, 0xff],
             },
         );
         assert_deserialize(
@@ -345,10 +356,7 @@ mod tests {
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
                 file_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 file_name: String::from("baz"),
-                md5: [
-                    0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0x1, 0xff,
-                ],
+                md5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1, 0xff],
             },
         );
         assert_deserialize(
@@ -358,7 +366,7 @@ mod tests {
                 "email": "bar",
                 "tier": "baz",
                 "rootFolder": "00000000-0000-0000-0000-000000000002",
-                "filesCount": 1, 
+                "filesCount": 1,
                 "totalSize": 2,
             }),
             AccountDetails {
@@ -436,8 +444,7 @@ mod tests {
                                 kind: ContentKind::Folder {
                                     code: String::from("fiz"),
                                     public: true,
-                                    children_ids: vec![
-                                    ],
+                                    children_ids: vec![],
                                     total_download_count: None,
                                     total_size: None,
                                     children: None,
@@ -454,16 +461,13 @@ mod tests {
                                 kind: ContentKind::File {
                                     size: 20,
                                     download_count: 10,
-                                    md5: [
-                                        0, 0, 0, 0, 0, 0, 0, 0,
-                                        0, 0, 0, 0, 0, 0, 0x1, 0xff,
-                                    ],
+                                    md5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1, 0xff],
                                     mimetype: Mime::from_str("text/plain").unwrap(),
                                     server_selected: String::from("fez"),
                                     link: Url::parse("http://example.com/path/file.txt").unwrap(),
                                 },
                             },
-                        )
+                        ),
                     ])),
                 },
             },
@@ -481,18 +485,15 @@ mod tests {
             "mimetype": "error-mime-type",
             "serverSelected": "fez",
             "link": "http://example.com/path/file.txt",
-        })).is_err());
-
+        }))
+        .is_err());
     }
 
     fn assert_deserialize<T>(expected_value: Value, payload: T)
-        where
-            T: DeserializeOwned + Debug + PartialEq,
+    where
+        T: DeserializeOwned + Debug + PartialEq,
     {
         assert!(0 < format!("{:?}", payload).len());
         assert_eq!(from_value::<T>(expected_value).unwrap(), payload);
     }
-
 }
-
-
