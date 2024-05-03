@@ -13,21 +13,28 @@ use uuid::Uuid;
 
 pub use payload::*;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    HttpRequestError(Option<Url>, String),
-    HttpStatusCodeError(Url, StatusCode),
-    ApiStatusError(Url, String),
-    EmptyServerList,
-    InvalidFilePath(PathBuf, String),
-    CouldntOpenFile(PathBuf, String),
-    InvalidContentUrl(Url, String),
-}
+    #[error("HttpRequestError: {0}")]
+    HttpRequestError(#[from] reqwest::Error),
 
-impl From<reqwest::Error> for Error {
-    fn from(err: reqwest::Error) -> Self {
-        Self::HttpRequestError(err.url().cloned(), err.to_string())
-    }
+    #[error("HttpStatusCodeError: url {0}, error code {1}")]
+    HttpStatusCodeError(Url, StatusCode),
+
+    #[error("ApiStatusError: url {0}, error {1}")]
+    ApiStatusError(Url, String),
+
+    #[error("Gofile returned empty server list")]
+    EmptyServerList,
+
+    #[error("InvalidFilePath at path {0}. Error: {1}")]
+    InvalidFilePath(PathBuf, String),
+
+    #[error("Could not open file at path {0}. Error: {1}")]
+    CouldntOpenFile(PathBuf, String),
+
+    #[error("Gofile InvalidContentUrl at url {0}. Error: {1}")]
+    InvalidContentUrl(Url, String),
 }
 
 #[derive(Debug)]
