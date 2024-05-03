@@ -1,11 +1,16 @@
+mod bar;
 mod payload;
+
+use bar::WrappedBar;
 use chrono::{DateTime, Utc};
+use futures::StreamExt;
 use reqwest::{
     multipart::{Form, Part},
-    Body, Method, Response, StatusCode,
+    Method, Response, StatusCode,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+use std::cmp::min;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use url::Url;
@@ -35,6 +40,9 @@ pub enum Error {
 
     #[error("Gofile InvalidContentUrl at url {0}. Error: {1}")]
     InvalidContentUrl(Url, String),
+
+    #[error("StdIoError: {0}")]
+    StdIoError(#[from] std::io::Error),
 }
 
 #[derive(Debug)]
@@ -59,7 +67,7 @@ impl Api {
     }
 
     pub async fn get_server(&self) -> Result<ServerApi, Error> {
-        let Servers { servers } = Api::get(&self.base_url, "servers").await?;
+        let Servers { servers } = Api::get(&self.base_url, "servers?zone=eu").await?;
         let server = servers
             .into_iter()
             .next()
@@ -390,7 +398,7 @@ impl ServerApi {
     pub async fn upload_file_with_filename(
         &self,
         filename: impl Into<String>,
-        body: impl Into<Body>,
+        body: File,
     ) -> Result<UploadedFile, Error> {
         Self::upload_file_impl(&self.base_url, filename, body, None, None).await
     }
@@ -399,7 +407,7 @@ impl ServerApi {
         &self,
         folder_id: Uuid,
         filename: impl Into<String>,
-        body: impl Into<Body>,
+        body: File,
     ) -> Result<UploadedFile, Error> {
         Self::upload_file_impl(&self.base_url, filename, body, Some(folder_id), None).await
     }
@@ -430,13 +438,36 @@ impl ServerApi {
     async fn upload_file_impl(
         base_url: &str,
         filename: impl Into<String>,
-        body: impl Into<Body>,
+        body: File,
         folder_id: Option<Uuid>,
         token: Option<String>,
     ) -> Result<UploadedFile, Error> {
         let client = reqwest::Client::new();
+        let file_name: String = filename.into();
+        let input_ = file_name.clone();
+        let output_ = String::from(base_url);
 
-        let part = Part::stream(body).file_name(filename.into());
+        let total_size = body.metadata().await?.len();
+        let mut bar = WrappedBar::new(total_size, base_url, false);
+        let mut reader_stream = tokio_util::io::ReaderStream::new(body);
+        let mut uploaded: u64 = 0;
+        bar.set_length(total_size);
+
+        let async_stream = async_stream::stream! {
+            while let Some(chunk) = reader_stream.next().await {
+                if let Ok(chunk) = &chunk {
+                    let new = min(uploaded + (chunk.len() as u64), total_size);
+                    uploaded = new;
+                    bar.set_position(new);
+                    if uploaded >= total_size {
+                        bar.finish_upload(&input_, &output_);
+                    }
+                }
+                yield chunk;
+            }
+        };
+
+        let part = Part::stream(reqwest::Body::wrap_stream(async_stream)).file_name(file_name);
         let form = Form::new().part("file", part);
 
         let form = if let Some(folder_id) = folder_id {
@@ -491,7 +522,7 @@ impl AuthorizedServerApi {
     pub async fn upload_file_with_filename(
         &self,
         filename: impl Into<String>,
-        body: impl Into<Body>,
+        body: File,
     ) -> Result<UploadedFile, Error> {
         ServerApi::upload_file_impl(
             &self.base_url,
@@ -507,7 +538,7 @@ impl AuthorizedServerApi {
         &self,
         folder_id: Uuid,
         filename: impl Into<String>,
-        body: impl Into<Body>,
+        body: File,
     ) -> Result<UploadedFile, Error> {
         ServerApi::upload_file_impl(
             &self.base_url,
