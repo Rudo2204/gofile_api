@@ -524,7 +524,7 @@ mod tests {
         let mut server = Server::new();
         let base_url = server.url();
 
-        assert_eq!(Api::new().base_url, "https://api.gofile.io");
+        assert_eq!(Api::default().base_url, "https://api.gofile.io");
 
         let api = Api {
             base_url: base_url.clone(),

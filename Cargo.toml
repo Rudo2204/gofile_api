@@ -13,6 +13,7 @@ mime = "0.3.17"
 reqwest = { version = "0.11.18", features = ["json", "multipart", "stream"] }
 serde = { version = "1.0.175", features = ["derive"] }
 serde_json = "1.0.103"
+thiserror = "1.0.59"
 tokio = { version = "1.29.1", features = ["rt", "macros", "default", "rt-multi-thread", "fs"] }
 url = { version = "2.4.0", features = ["serde"] }
 uuid = { version = "1.4.1", features = ["serde"] }
