@@ -6,7 +6,7 @@ async fn main() -> Result<(), Error> {
     let token = var("GOFILE_TOKEN").unwrap();
     let file_path = &args().collect::<Vec<_>>()[1];
 
-    let api = Api::new().authorize(token);
+    let api = Api::default().authorize(token);
     let server_api = api.get_server().await?;
     let uploaded_file_info = server_api.upload_file(file_path).await?;
     println!("{:?}", uploaded_file_info);

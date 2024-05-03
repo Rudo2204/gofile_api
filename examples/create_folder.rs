@@ -5,7 +5,7 @@ use std::env::*;
 async fn main() -> Result<(), Error> {
     let token = var("GOFILE_TOKEN").unwrap();
 
-    let api = Api::new().authorize(token);
+    let api = Api::default().authorize(token);
     let account_id = api.get_account_id().await?;
     let account_details = api.get_account_details(account_id).await?;
     let created_content = api
