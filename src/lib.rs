@@ -26,7 +26,7 @@ pub enum Error {
 
 impl From<reqwest::Error> for Error {
     fn from(err: reqwest::Error) -> Self {
-        Self::HttpRequestError(err.url().map(|u| u.clone()), err.to_string())
+        Self::HttpRequestError(err.url().cloned(), err.to_string())
     }
 }
 
@@ -35,13 +35,15 @@ pub struct Api {
     pub base_url: String,
 }
 
-impl Api {
-    pub fn new() -> Self {
-        Api {
+impl Default for Api {
+    fn default() -> Self {
+        Self {
             base_url: "https://api.gofile.io".into(),
         }
     }
+}
 
+impl Api {
     pub fn authorize(&self, token: impl Into<String>) -> AuthorizedApi {
         AuthorizedApi {
             base_url: self.base_url.clone(),
@@ -185,7 +187,7 @@ pub struct AuthorizedApi {
 
 impl AuthorizedApi {
     pub async fn get_server(&self) -> Result<AuthorizedServerApi, Error> {
-        let ServerApi { base_url } = Api::new().get_server().await?;
+        let ServerApi { base_url } = Api::default().get_server().await?;
         Ok(AuthorizedServerApi {
             base_url,
             token: self.token.clone(),

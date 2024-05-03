@@ -168,7 +168,7 @@ where
     }
 }
 
-fn comma_separated_string_from_vec<T, S>(vec: &Vec<T>, s: S) -> Result<S::Ok, S::Error>
+fn comma_separated_string_from_vec<T, S>(vec: &[T], s: S) -> Result<S::Ok, S::Error>
 where
     T: ToString,
     S: Serializer,
