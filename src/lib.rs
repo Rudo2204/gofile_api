@@ -1,4 +1,5 @@
-mod bar;
+#![allow(unused)]
+pub mod bar;
 mod payload;
 
 use bar::WrappedBar;
@@ -13,10 +14,16 @@ use serde_json::Value;
 use std::cmp::min;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
+use tokio::sync::mpsc::UnboundedSender;
 use url::Url;
 use uuid::Uuid;
 
 pub use payload::*;
+
+pub struct UploadedMessage {
+    pub uuid: Uuid,
+    pub uploaded: u64,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -59,14 +66,7 @@ impl Default for Api {
 }
 
 impl Api {
-    pub fn authorize(&self, token: impl Into<String>) -> AuthorizedApi {
-        AuthorizedApi {
-            base_url: self.base_url.clone(),
-            token: token.into(),
-        }
-    }
-
-    pub async fn get_server(&self) -> Result<ServerApi, Error> {
+    pub async fn get_server(&self, uuid: Uuid) -> Result<ServerApi, Error> {
         let Servers { servers } = Api::get(&self.base_url, "servers?zone=eu").await?;
         let server = servers
             .into_iter()
@@ -75,6 +75,7 @@ impl Api {
             .name;
         Ok(ServerApi {
             base_url: format!("https://{}.gofile.io", server),
+            uuid,
         })
     }
 
@@ -194,204 +195,30 @@ impl Api {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct AuthorizedApi {
-    pub base_url: String,
-    pub token: String,
-}
-
-impl AuthorizedApi {
-    pub async fn get_server(&self) -> Result<AuthorizedServerApi, Error> {
-        let ServerApi { base_url } = Api::default().get_server().await?;
-        Ok(AuthorizedServerApi {
-            base_url,
-            token: self.token.clone(),
-        })
-    }
-
-    pub async fn get_content(&self, url: &Url) -> Result<Content, Error> {
-        let code = Api::code_from_content_url(url)?;
-        self.get_content_by_code(code).await
-    }
-
-    pub async fn get_content_by_id(&self, content_id: Uuid) -> Result<Content, Error> {
-        self.get_content_impl(content_id.to_string()).await
-    }
-
-    pub async fn get_content_by_code(&self, code: impl AsRef<str>) -> Result<Content, Error> {
-        self.get_content_impl(code).await
-    }
-
-    async fn get_content_impl(&self, id_or_code: impl AsRef<str>) -> Result<Content, Error> {
-        Api::get_with_params(
-            &self.base_url,
-            format!("contents/{}", id_or_code.as_ref()),
-            vec![("token", self.token.clone())],
-        )
-        .await
-    }
-
-    pub async fn get_account_id(&self) -> Result<Uuid, Error> {
-        Api::get_with_params(
-            &self.base_url,
-            "accounts/getid",
-            vec![("token", self.token.clone())],
-        )
-        .await
-    }
-
-    pub async fn get_account_details(&self, account_id: Uuid) -> Result<AccountDetails, Error> {
-        Api::get_with_params(
-            &self.base_url,
-            format!("accounts/{}", account_id),
-            vec![("token", self.token.clone())],
-        )
-        .await
-    }
-
-    pub async fn create_folder(
-        &self,
-        parent_folder_id: Uuid,
-        folder_name: impl Into<String>,
-    ) -> Result<Content, Error> {
-        Api::put_with_payload(
-            &self.base_url,
-            "contents/createFolder",
-            CreateFolderApiPayload {
-                token: self.token.clone(),
-                parent_folder_id,
-                folder_name: folder_name.into(),
-            },
-        )
-        .await
-    }
-
-    pub async fn set_public_option(&self, content_id: Uuid, public: bool) -> Result<NoInfo, Error> {
-        self.set_option(content_id, ContentOpt::Public(public))
-            .await
-    }
-
-    pub async fn set_password_option(
-        &self,
-        content_id: Uuid,
-        password: impl Into<String>,
-    ) -> Result<NoInfo, Error> {
-        self.set_option(content_id, ContentOpt::Password(password.into()))
-            .await
-    }
-
-    pub async fn set_description_option(
-        &self,
-        content_id: Uuid,
-        description: impl Into<String>,
-    ) -> Result<NoInfo, Error> {
-        self.set_option(content_id, ContentOpt::Description(description.into()))
-            .await
-    }
-
-    pub async fn set_expire_option(
-        &self,
-        content_id: Uuid,
-        expire: DateTime<Utc>,
-    ) -> Result<NoInfo, Error> {
-        self.set_option(content_id, ContentOpt::Expire(expire))
-            .await
-    }
-
-    pub async fn set_tags_option<S>(&self, content_id: Uuid, tags: Vec<S>) -> Result<NoInfo, Error>
-    where
-        S: Into<String>,
-    {
-        self.set_option(
-            content_id,
-            ContentOpt::Tags(tags.into_iter().map(|s| s.into()).collect()),
-        )
-        .await
-    }
-
-    pub async fn get_direct_link(&self, content_id: Uuid) -> Result<Url, Error> {
-        self.set_direct_link_option(content_id, true).await
-    }
-
-    pub async fn disable_direct_link(&self, content_id: Uuid) -> Result<NoInfo, Error> {
-        self.set_direct_link_option(content_id, false).await
-    }
-
-    pub async fn set_direct_link_option<T>(
-        &self,
-        content_id: Uuid,
-        direct_link: bool,
-    ) -> Result<T, Error>
-    where
-        T: DeserializeOwned,
-    {
-        self.set_option(content_id, ContentOpt::DirectLink(direct_link))
-            .await
-    }
-
-    pub async fn set_option<T>(&self, content_id: Uuid, opt: ContentOpt) -> Result<T, Error>
-    where
-        T: DeserializeOwned,
-    {
-        Api::put_with_payload(
-            &self.base_url,
-            format!("contents/{}/update", content_id),
-            UpdateContentApiPayload {
-                token: self.token.clone(),
-                opt,
-            },
-        )
-        .await
-    }
-
-    pub async fn copy_content(
-        &self,
-        content_ids: Vec<Uuid>,
-        dest_folder_id: Uuid,
-    ) -> Result<NoInfo, Error> {
-        Api::put_with_payload(
-            &self.base_url,
-            "contents/copy",
-            CopyContentApiPayload {
-                token: self.token.clone(),
-                contents_id: content_ids,
-                folder_id_dest: dest_folder_id,
-            },
-        )
-        .await
-    }
-
-    pub async fn delete_content(&self, content_ids: Vec<Uuid>) -> Result<NoInfo, Error> {
-        Api::delete_with_payload(
-            &self.base_url,
-            "contents",
-            DeleteContentApiPayload {
-                token: self.token.clone(),
-                contents_id: content_ids,
-            },
-        )
-        .await
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 pub struct ServerApi {
     pub base_url: String,
+    pub uuid: Uuid,
 }
 
 impl ServerApi {
-    pub async fn upload_file(&self, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
+    pub async fn upload_file(
+        &self,
+        path: impl AsRef<Path>,
+        tx: UnboundedSender<UploadedMessage>,
+    ) -> Result<UploadedFile, Error> {
         let (filename, file) = Self::open_file(path).await?;
-        self.upload_file_with_filename(filename, file).await
+        self.upload_file_with_filename(filename, file, tx).await
     }
 
     pub async fn upload_file_to_folder(
         &self,
         folder_id: Uuid,
         path: impl AsRef<Path>,
+        tx: UnboundedSender<UploadedMessage>,
     ) -> Result<UploadedFile, Error> {
         let (filename, file) = Self::open_file(path).await?;
-        self.upload_file_with_filename_to_folder(folder_id, filename, file)
+        self.upload_file_with_filename_to_folder(folder_id, filename, file, tx)
             .await
     }
 
@@ -399,8 +226,9 @@ impl ServerApi {
         &self,
         filename: impl Into<String>,
         body: File,
+        tx: UnboundedSender<UploadedMessage>,
     ) -> Result<UploadedFile, Error> {
-        Self::upload_file_impl(&self.base_url, filename, body, None, None).await
+        Self::upload_file_impl(&self.base_url, filename, body, None, None, self.uuid, tx).await
     }
 
     pub async fn upload_file_with_filename_to_folder(
@@ -408,8 +236,18 @@ impl ServerApi {
         folder_id: Uuid,
         filename: impl Into<String>,
         body: File,
+        tx: UnboundedSender<UploadedMessage>,
     ) -> Result<UploadedFile, Error> {
-        Self::upload_file_impl(&self.base_url, filename, body, Some(folder_id), None).await
+        Self::upload_file_impl(
+            &self.base_url,
+            filename,
+            body,
+            Some(folder_id),
+            None,
+            self.uuid,
+            tx,
+        )
+        .await
     }
 
     pub async fn open_file(path: impl AsRef<Path>) -> Result<(String, File), Error> {
@@ -423,7 +261,7 @@ impl ServerApi {
         let Some(filename) = filename.to_str() else {
             return Err(Error::InvalidFilePath(
                 path.into(),
-                "The filename couldn't convert to a utf-8 stirng.".into(),
+                "The filename couldn't convert to a utf-8 string.".into(),
             ));
         };
 
@@ -441,6 +279,8 @@ impl ServerApi {
         body: File,
         folder_id: Option<Uuid>,
         token: Option<String>,
+        uuid: Uuid,
+        tx: UnboundedSender<UploadedMessage>,
     ) -> Result<UploadedFile, Error> {
         let client = reqwest::Client::new();
         let file_name: String = filename.into();
@@ -448,19 +288,17 @@ impl ServerApi {
         let output_ = String::from(base_url);
 
         let total_size = body.metadata().await?.len();
-        let mut bar = WrappedBar::new(total_size, base_url, false);
         let mut reader_stream = tokio_util::io::ReaderStream::new(body);
         let mut uploaded: u64 = 0;
-        bar.set_length(total_size);
 
         let async_stream = async_stream::stream! {
             while let Some(chunk) = reader_stream.next().await {
                 if let Ok(chunk) = &chunk {
                     let new = min(uploaded + (chunk.len() as u64), total_size);
                     uploaded = new;
-                    bar.set_position(new);
+                    tx.send(UploadedMessage{ uuid, uploaded });
                     if uploaded >= total_size {
-                        bar.finish_upload(&input_, &output_);
+                        tx.send(UploadedMessage { uuid, uploaded: total_size });
                     }
                 }
                 yield chunk;
@@ -487,196 +325,5 @@ impl ServerApi {
         let res = client.post(url).multipart(form).send().await?;
 
         Api::parse_res(res).await
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct AuthorizedServerApi {
-    pub base_url: String,
-    pub token: String,
-}
-
-impl AuthorizedServerApi {
-    pub fn authorize(self, token: impl Into<String>) -> AuthorizedServerApi {
-        AuthorizedServerApi {
-            base_url: self.base_url,
-            token: token.into(),
-        }
-    }
-
-    pub async fn upload_file(&self, path: impl AsRef<Path>) -> Result<UploadedFile, Error> {
-        let (filename, file) = ServerApi::open_file(path).await?;
-        self.upload_file_with_filename(filename, file).await
-    }
-
-    pub async fn upload_file_to_folder(
-        &self,
-        folder_id: Uuid,
-        path: impl AsRef<Path>,
-    ) -> Result<UploadedFile, Error> {
-        let (filename, file) = ServerApi::open_file(path).await?;
-        self.upload_file_with_filename_to_folder(folder_id, filename, file)
-            .await
-    }
-
-    pub async fn upload_file_with_filename(
-        &self,
-        filename: impl Into<String>,
-        body: File,
-    ) -> Result<UploadedFile, Error> {
-        ServerApi::upload_file_impl(
-            &self.base_url,
-            filename,
-            body,
-            None,
-            Some(self.token.clone()),
-        )
-        .await
-    }
-
-    pub async fn upload_file_with_filename_to_folder(
-        &self,
-        folder_id: Uuid,
-        filename: impl Into<String>,
-        body: File,
-    ) -> Result<UploadedFile, Error> {
-        ServerApi::upload_file_impl(
-            &self.base_url,
-            filename,
-            body,
-            Some(folder_id),
-            Some(self.token.clone()),
-        )
-        .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockito::{Matcher, Server};
-    use uuid::uuid;
-
-    #[tokio::test]
-    async fn it_works() -> Result<(), Error> {
-        let mut server = Server::new();
-        let base_url = server.url();
-
-        assert_eq!(Api::default().base_url, "https://api.gofile.io");
-
-        let api = Api {
-            base_url: base_url.clone(),
-        };
-        let authorized_api = api.authorize("gofile_token");
-
-        let mock = server.mock("GET", "/servers")
-            .with_status(200)
-            .with_body(r#"{ "status": "ok", "data": { "servers": [ {"name":"store1","zone":"eu"}, {"name":"store3","zone":"na"} ] } }"#)
-            .expect(1)
-            .create();
-        let server_api = api.get_server().await?;
-        assert_eq!(server_api.base_url, "https://store1.gofile.io");
-        mock.assert();
-
-        let mock = server
-            .mock("POST", "/contents/uploadfile")
-            .match_body(Matcher::Regex(String::from(r#"file content"#)))
-            .with_status(200)
-            .with_body(
-                r#"{
-                "status": "ok",
-                "data": {
-                    "guestToken": "foo",
-                    "downloadPage": "http://example.com/path/file.txt",
-                    "code": "bar",
-                    "parentFolder": "00000000-0000-0000-0000-000000000001",
-                    "fileId": "00000000-0000-0000-0000-000000000002",
-                    "fileName": "baz",
-                    "md5": "000000000000000000000000000001ff"
-                }
-            }"#,
-            )
-            .expect(1)
-            .create();
-        let server_api = ServerApi {
-            base_url: base_url.clone(),
-        };
-        let uploaded_file = server_api
-            .upload_file_with_filename("test.txt", "file content")
-            .await?;
-        assert_eq!(
-            uploaded_file.file_id,
-            uuid!("00000000-0000-0000-0000-000000000002")
-        );
-        mock.assert();
-
-        let mock = server.mock("GET", "/contents/foo?token=gofile_token")
-            .with_status(200)
-            .with_body(r#"{
-              "status": "ok",
-              "data": {
-                "id": "5e042945-0e5c-4c1d-9293-4574d376e496",
-                "type": "folder",
-                "name": "test3",
-                "parentFolder": "9e67ed91-a838-48f6-a96f-f2dd13de3e31",
-                "code": "JoKslp",
-                "createTime": 1709956384,
-                "public": true,
-                "totalDownloadCount": 1,
-                "totalSize": 120041,
-                "childrenIds": [
-                  "caf9aa4f-09fc-4e73-adb7-174a9c681674",
-                  "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37",
-                  "191c0a18-e4b2-494b-92dc-cff7e7fc6471"
-                ],
-                "children": {
-                  "191c0a18-e4b2-494b-92dc-cff7e7fc6471": {
-                    "id": "191c0a18-e4b2-494b-92dc-cff7e7fc6471",
-                    "type": "folder",
-                    "name": "folder",
-                    "code": "p8NOPG",
-                    "createTime": 1710264457,
-                    "public": true,
-                    "childrenIds": [
-                      "f8b5c54d-75b3-4593-beed-52c1379bf2ab"
-                    ]
-                  },
-                  "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37": {
-                    "id": "cb35b4aa-274d-4d0f-9e81-97a58dd7fb37",
-                    "type": "file",
-                    "name": "public.zip",
-                    "createTime": 1710264451,
-                    "size": 26178,
-                    "downloadCount": 0,
-                    "md5": "c7dfde837b22280147a8cc2d9cb4d8a4",
-                    "mimetype": "application/zip",
-                    "serverSelected": "store2",
-                    "link": "https://store2.gofile.io/download/web/cb35b4aa-274d-4d0f-9e81-97a58dd7fb37/public.zip"
-                  },
-                  "caf9aa4f-09fc-4e73-adb7-174a9c681674": {
-                    "id": "caf9aa4f-09fc-4e73-adb7-174a9c681674",
-                    "type": "file",
-                    "name": "Capture.JPG",
-                    "createTime": 1710264443,
-                    "size": 93863,
-                    "downloadCount": 1,
-                    "md5": "b32e8427d3c8b25253a7559170b281d2",
-                    "mimetype": "image/jpeg",
-                    "serverSelected": "store5",
-                    "link": "https://store5.gofile.io/download/web/caf9aa4f-09fc-4e73-adb7-174a9c681674/Capture.JPG",
-                    "thumbnail": "https://store5.gofile.io/download/web/caf9aa4f-09fc-4e73-adb7-174a9c681674/thumb_Capture.JPG"
-                  }
-                }
-              }
-            }"#)
-            .expect(1)
-            .create();
-        let content = authorized_api
-            .get_content(&Url::parse("https://gofile.io/d/foo").unwrap())
-            .await?;
-        assert_eq!(content.id, uuid!("5e042945-0e5c-4c1d-9293-4574d376e496"));
-        mock.assert();
-
-        Ok(())
     }
 }
