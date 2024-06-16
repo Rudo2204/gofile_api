@@ -67,9 +67,10 @@ impl Default for Api {
 
 impl Api {
     pub async fn get_server(&self, uuid: Uuid) -> Result<ServerApi, Error> {
-        let Servers { servers } = Api::get(&self.base_url, "servers?zone=eu").await?;
+        let Servers { servers } = Api::get(&self.base_url, "servers").await?;
         let server = servers
             .into_iter()
+            .filter(|x| x.zone == "eu")
             .next()
             .ok_or(Error::EmptyServerList)?
             .name;
