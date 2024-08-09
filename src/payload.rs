@@ -85,7 +85,7 @@ pub struct Server {
 pub struct UploadedFile {
     pub guest_token: Option<String>,
     pub download_page: Url,
-    pub code: String,
+    pub parent_folder_code: String,
     pub parent_folder: Uuid,
     pub file_id: Uuid,
     pub file_name: String,
@@ -113,7 +113,7 @@ pub struct Content {
 pub enum ContentKind {
     #[serde(rename_all = "camelCase")]
     Folder {
-        code: String,
+        parent_folder_code: String,
 
         #[serde(default)]
         public: bool,
@@ -323,7 +323,7 @@ mod tests {
         assert_deserialize(
             json!({
                 "downloadPage": "http://example.com/path/file.txt",
-                "code": "bar",
+                "parentFolderCode": "bar",
                 "parentFolder": "00000000-0000-0000-0000-000000000001",
                 "fileId": "00000000-0000-0000-0000-000000000002",
                 "fileName": "baz",
@@ -332,7 +332,7 @@ mod tests {
             UploadedFile {
                 guest_token: None,
                 download_page: Url::parse("http://example.com/path/file.txt").unwrap(),
-                code: String::from("bar"),
+                parent_folder_code: String::from("bar"),
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
                 file_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 file_name: String::from("baz"),
@@ -343,7 +343,7 @@ mod tests {
             json!({
                 "guestToken": "foo",
                 "downloadPage": "http://example.com/path/file.txt",
-                "code": "bar",
+                "parentFolderCode": "bar",
                 "parentFolder": "00000000-0000-0000-0000-000000000001",
                 "fileId": "00000000-0000-0000-0000-000000000002",
                 "fileName": "baz",
@@ -352,7 +352,7 @@ mod tests {
             UploadedFile {
                 guest_token: Some(String::from("foo")),
                 download_page: Url::parse("http://example.com/path/file.txt").unwrap(),
-                code: String::from("bar"),
+                parent_folder_code: String::from("bar"),
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
                 file_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 file_name: String::from("baz"),
@@ -386,7 +386,7 @@ mod tests {
                 "parentFolder": "00000000-0000-0000-0000-000000000002",
                 "createTime": 1000000001,
                 "type": "folder",
-                "code": "bar",
+                "parentFolderCode": "bar",
                 "childrenIds": [
                     "00000000-0000-0000-0000-000000000003",
                     "00000000-0000-0000-0000-000000000004",
@@ -400,7 +400,7 @@ mod tests {
                         "parentFolder": "00000000-0000-0000-0000-000000000001",
                         "createTime": 1000000002,
                         "type": "folder",
-                        "code": "fiz",
+                        "parentFolderCode": "fiz",
                         "public": true,
                         "childrenIds": [],
                     },
@@ -425,7 +425,7 @@ mod tests {
                 parent_folder: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 create_time: Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 41).unwrap(),
                 kind: ContentKind::Folder {
-                    code: String::from("bar"),
+                    parent_folder_code: String::from("bar"),
                     public: false,
                     children_ids: vec![
                         uuid!("00000000-0000-0000-0000-000000000003"),
@@ -442,7 +442,7 @@ mod tests {
                                 parent_folder: Some(uuid!("00000000-0000-0000-0000-000000000001")),
                                 create_time: Utc.with_ymd_and_hms(2001, 9, 9, 1, 46, 42).unwrap(),
                                 kind: ContentKind::Folder {
-                                    code: String::from("fiz"),
+                                    parent_folder_code: String::from("fiz"),
                                     public: true,
                                     children_ids: vec![],
                                     total_download_count: None,
