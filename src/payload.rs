@@ -87,8 +87,8 @@ pub struct UploadedFile {
     pub download_page: Url,
     pub parent_folder_code: String,
     pub parent_folder: Uuid,
-    pub file_id: Uuid,
-    pub file_name: String,
+    pub id: Uuid,
+    pub name: String,
 
     #[serde(with = "hex::serde")]
     pub md5: [u8; 16],
@@ -334,8 +334,8 @@ mod tests {
                 download_page: Url::parse("http://example.com/path/file.txt").unwrap(),
                 parent_folder_code: String::from("bar"),
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
-                file_id: uuid!("00000000-0000-0000-0000-000000000002"),
-                file_name: String::from("baz"),
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: String::from("baz"),
                 md5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1, 0xff],
             },
         );
@@ -354,8 +354,8 @@ mod tests {
                 download_page: Url::parse("http://example.com/path/file.txt").unwrap(),
                 parent_folder_code: String::from("bar"),
                 parent_folder: uuid!("00000000-0000-0000-0000-000000000001"),
-                file_id: uuid!("00000000-0000-0000-0000-000000000002"),
-                file_name: String::from("baz"),
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: String::from("baz"),
                 md5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1, 0xff],
             },
         );
