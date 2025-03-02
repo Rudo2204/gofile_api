@@ -56,23 +56,24 @@ pub enum Error {
 #[derive(Debug)]
 pub struct Api {
     pub base_url: String,
+    pub forced_region: String,
 }
 
 impl Default for Api {
     fn default() -> Self {
         Self {
-            base_url: "https://api.gofile.io".into(),
+            base_url: String::from("https://api.gofile.io"),
+            forced_region: env::var("GOFILE_REGION").unwrap_or_else(|_| String::from("us")),
         }
     }
 }
 
 impl Api {
     pub async fn get_server(&self, uuid: Uuid) -> Result<ServerApi, Error> {
-        let forced_region = env::var("GOFILE_REGION").unwrap_or_else(|_| String::from("us"));
         let Servers { servers } = Api::get(&self.base_url, "servers").await?;
         let server = servers
             .into_iter()
-            .filter(|x| x.zone == forced_region)
+            .filter(|x| x.zone == self.forced_region)
             .next()
             .ok_or(Error::EmptyServerList)?
             .name;
