@@ -10,6 +10,7 @@ use reqwest::{
     Method, Response, StatusCode,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::env;
 use serde_json::Value;
 use std::cmp::min;
 use std::path::{Path, PathBuf};
@@ -67,10 +68,11 @@ impl Default for Api {
 
 impl Api {
     pub async fn get_server(&self, uuid: Uuid) -> Result<ServerApi, Error> {
+        let forced_region = env::var("GOFILE_REGION").unwrap_or_else(|_| String::from("us"));
         let Servers { servers } = Api::get(&self.base_url, "servers").await?;
         let server = servers
             .into_iter()
-            .filter(|x| x.zone == "eu")
+            .filter(|x| x.zone == forced_region)
             .next()
             .ok_or(Error::EmptyServerList)?
             .name;
