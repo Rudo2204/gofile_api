@@ -63,7 +63,7 @@ impl Default for Api {
     fn default() -> Self {
         Self {
             base_url: String::from("https://api.gofile.io"),
-            forced_region: env::var("GOFILE_REGION").unwrap_or_else(|_| String::from("us")),
+            forced_region: env::var("GOFILE_REGION").unwrap_or_else(|_| String::from("eu")),
         }
     }
 }
